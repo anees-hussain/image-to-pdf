@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk, ImageEnhance
+from PIL import Image, ImageTk, ImageEnhance, ImageOps
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -48,7 +48,7 @@ class ImageToPDFApp:
         tk.Button(top, text="PDF", command=self.create_pdf).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="◀ Prev", command=self.prev_image).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Next ▶", command=self.next_image).pack(side=tk.LEFT, padx=4)
-
+        tk.Button(top, text="Auto Adjust", command=self.auto_adjust_all).pack(side=tk.LEFT, padx=6)
 
         controls = tk.Frame(self.root)
         controls.pack()
@@ -213,6 +213,78 @@ class ImageToPDFApp:
         self.original_image = self.current_image.copy()
         self.images[self.current_index] = self.current_image
         self.show_image()
+
+    def auto_adjust_all(self):
+        if not self.images:
+            messagebox.showwarning("Auto Adjust", "No images loaded")
+            return
+
+        # Show loader
+        self.show_loader("Auto adjusting images...\nPlease wait")
+
+        thread = threading.Thread(
+            target=self._auto_adjust_worker,
+            daemon=True
+        )
+        thread.start()
+
+    def _auto_adjust_worker(self):
+        try:
+            new_images = []
+
+            for img in self.images:
+                img = self._auto_rotate(img)
+                img = self._auto_enhance(img)
+                new_images.append(img)
+
+            # Back to UI thread
+            self.root.after(0, lambda: self._on_auto_adjust_done(new_images))
+
+        except Exception as e:
+            self.root.after(0, lambda: self._on_auto_adjust_error(e))
+
+    def _auto_rotate(self, img):
+        try:
+            # This fixes camera-rotated images properly
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            pass
+        return img
+
+    def _auto_enhance(self, img):
+        # Gentle brightness boost
+        img = ImageEnhance.Brightness(img).enhance(1.05)
+
+        # Gentle contrast boost (text clarity)
+        img = ImageEnhance.Contrast(img).enhance(1.25)
+
+        # Slight saturation boost (ink visibility)
+        img = ImageEnhance.Color(img).enhance(1.1)
+
+        # Optional: slight sharpening
+        img = ImageEnhance.Sharpness(img).enhance(1.1)
+
+        return img
+
+    def _on_auto_adjust_done(self, new_images):
+        self.hide_loader()
+
+        self.images = new_images
+        self.history = [[img.copy()] for img in self.images]
+        self.redo_stack = [[] for _ in self.images]
+
+        self.current_index = 0
+        self.slider.config(to=len(self.images) - 1)
+        self.slider.set(0)
+        self.slider.config(state="normal")
+
+        self.load_current()
+
+        messagebox.showinfo("Auto Adjust", "All images auto adjusted successfully")
+
+    def _on_auto_adjust_error(self, error):
+        self.hide_loader()
+        messagebox.showerror("Auto Adjust Failed", str(error))
 
     # ---------------- Crop (FIXED) ----------------
     def start_crop(self, e):
