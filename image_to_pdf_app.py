@@ -5,7 +5,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import threading
-import os
+import zipfile
+import json
+import io
 
 class ImageToPDFApp:
     def __init__(self, root):
@@ -39,13 +41,20 @@ class ImageToPDFApp:
         top = tk.Frame(self.root)
         top.pack(pady=5)
 
-        tk.Button(top, text="Load", command=self.load_images).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Crop", command=self.crop_image).pack(side=tk.LEFT, padx=4)
+        tk.Button(top, text="Save Project", command=self.save_project).pack(side=tk.LEFT, padx=4)
+        tk.Button(top, text="Open Project", command=self.open_project).pack(side=tk.LEFT, padx=4)
+
+        tk.Button(top, text="Load Images", command=self.load_images).pack(side=tk.LEFT, padx=4)
+        tk.Button(top, text="Crop Image", command=self.crop_image).pack(side=tk.LEFT, padx=4)
+
         tk.Button(top, text="⟲", command=lambda: self.rotate(-90)).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="⟳", command=lambda: self.rotate(90)).pack(side=tk.LEFT, padx=4)
+
         tk.Button(top, text="Undo", command=self.undo).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Redo", command=self.redo).pack(side=tk.LEFT, padx=4)
+
         tk.Button(top, text="PDF", command=self.create_pdf).pack(side=tk.LEFT, padx=4)
+
         tk.Button(top, text="◀ Prev", command=self.prev_image).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Next ▶", command=self.next_image).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Auto Adjust", command=self.auto_adjust_all).pack(side=tk.LEFT, padx=6)
@@ -104,6 +113,76 @@ class ImageToPDFApp:
         for slider in (self.brightness, self.contrast, self.saturation, self.sharpness):
             slider.bind("<ButtonPress-1>", self.on_slider_start)
             slider.bind("<ButtonRelease-1>", self.on_slider_release)
+
+    # ----------- Open/Save Project --------------
+
+    def save_project(self):
+        if not self.images:
+            messagebox.showwarning("Save Project", "No project to save")
+            return
+
+        path = filedialog.asksaveasfilename(
+            defaultextension=".itp",
+            filetypes=[("Image To PDF Project", "*.itp")]
+        )
+        if not path:
+            return
+
+        try:
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                # Save images
+                for i, img in enumerate(self.images):
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    z.writestr(f"images/{i}.png", buf.getvalue())
+
+                # Save metadata
+                project_data = {
+                    "image_count": len(self.images),
+                    "current_index": self.current_index
+                }
+                z.writestr("project.json", json.dumps(project_data))
+
+            messagebox.showinfo("Save Project", "Project saved successfully")
+
+        except Exception as e:
+            messagebox.showerror("Save Failed", str(e))
+
+    def open_project(self):
+        path = filedialog.askopenfilename(
+            filetypes=[("Image To PDF Project", "*.itp")]
+        )
+        if not path:
+            return
+
+        try:
+            with zipfile.ZipFile(path, "r") as z:
+                project_data = json.loads(z.read("project.json"))
+
+                images = []
+                for i in range(project_data["image_count"]):
+                    img_data = z.read(f"images/{i}.png")
+                    img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                    images.append(img)
+
+            # Reset app before loading
+            self.reset_app()
+
+            self.images = images
+            self.history = [[img.copy()] for img in self.images]
+            self.redo_stack = [[] for _ in self.images]
+
+            self.current_index = project_data.get("current_index", 0)
+            self.slider.config(to=len(self.images) - 1)
+            self.slider.set(self.current_index)
+            self.slider.config(state="normal")
+
+            self.load_current()
+
+            messagebox.showinfo("Open Project", "Project loaded successfully")
+
+        except Exception as e:
+            messagebox.showerror("Open Failed", str(e))
 
     # ---------------- Image Load ----------------
     def load_images(self):
