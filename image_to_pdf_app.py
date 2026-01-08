@@ -1,3 +1,4 @@
+from tkinter import ttk
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk, ImageEnhance, ImageOps
@@ -22,6 +23,13 @@ class ImageToPDFApp:
         self.lasso_active = False
         self.slider_editing = False
         self.pre_slider_image = None
+        self.slider_updating = False
+
+        self.root.bind("<Control-z>", lambda e: self.undo())
+        self.root.bind("<Control-y>", lambda e: self.redo())
+        self.root.bind("<Delete>", lambda e: self.delete_current_image())
+        self.root.bind("<Control-s>", lambda e: self.save_project())
+        self.root.bind("<Control-o>", lambda e: self.open_project())
 
 
         self.current_index = 0
@@ -38,44 +46,55 @@ class ImageToPDFApp:
 
     # ---------------- UI ----------------
     def create_ui(self):
-        top = tk.Frame(self.root)
-        top.pack(pady=5)
+        top = ttk.Frame(self.root, padding=8)
+        top.pack(fill=tk.X, pady=5)
 
-        tk.Button(top, text="Save Project", command=self.save_project).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Open Project", command=self.open_project).pack(side=tk.LEFT, padx=4)
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("TFrame", background="#f5f5f5")
 
-        tk.Button(top, text="Load Images", command=self.load_images).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Crop Image", command=self.crop_image).pack(side=tk.LEFT, padx=4)
+        ttk.Separator(top, orient="vertical").pack(side=tk.LEFT, fill=tk.Y, padx=8)
 
-        tk.Button(top, text="⟲", command=lambda: self.rotate(-90)).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="⟳", command=lambda: self.rotate(90)).pack(side=tk.LEFT, padx=4)
+        sidebar = ttk.Frame(self.root, padding=10)
+        sidebar.pack(side=tk.LEFT, fill=tk.Y)
 
-        tk.Button(top, text="Undo", command=self.undo).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Redo", command=self.redo).pack(side=tk.LEFT, padx=4)
+        ttk.Button(sidebar, text="Crop Image", command=self.crop_image).pack(fill=tk.X, pady=4)
+        ttk.Button(sidebar, text="Rotate Left", command=lambda: self.rotate(-90)).pack(fill=tk.X, pady=4)
+        ttk.Button(sidebar, text="Rotate Right", command=lambda: self.rotate(90)).pack(fill=tk.X, pady=4)
+        ttk.Separator(sidebar).pack(fill=tk.X, pady=8)
+        ttk.Button(sidebar, text="Replace Image", command=self.replace_current_image).pack(fill=tk.X, pady=4)
+        ttk.Button(sidebar, text="Delete Image", command=self.delete_current_image).pack(fill=tk.X, pady=4)
 
-        tk.Button(top, text="Delete Selected Image", command=self.delete_current_image).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Replace Selected Image", command=self.replace_current_image).pack(side=tk.LEFT, padx=4)
+        ttk.Button(top, text="Save Project", command=self.save_project).pack(side=tk.LEFT, padx=4)
+        ttk.Button(top, text="Open Project", command=self.open_project).pack(side=tk.LEFT, padx=4)
 
-        tk.Button(top, text="PDF", command=self.create_pdf).pack(side=tk.LEFT, padx=4)
+        ttk.Button(top, text="Load Images", command=self.load_images).pack(side=tk.LEFT, padx=4)
 
-        tk.Button(top, text="◀ Prev", command=self.prev_image).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Next ▶", command=self.next_image).pack(side=tk.LEFT, padx=4)
-        tk.Button(top, text="Auto Adjust", command=self.auto_adjust_all).pack(side=tk.LEFT, padx=6)
+        ttk.Button(top, text="Undo", command=self.undo).pack(side=tk.LEFT, padx=4)
+        ttk.Button(top, text="Redo", command=self.redo).pack(side=tk.LEFT, padx=4)
+
+        ttk.Button(top, text="PDF", command=self.create_pdf).pack(side=tk.LEFT, padx=4)
+
+        ttk.Button(top, text="◀ Prev", command=self.prev_image).pack(side=tk.LEFT, padx=4)
+        ttk.Button(top, text="Next ▶", command=self.next_image).pack(side=tk.LEFT, padx=4)
+        ttk.Button(top, text="Auto Adjust", command=self.auto_adjust_all).pack(side=tk.LEFT, padx=6)
 
         controls = tk.Frame(self.root)
         controls.pack()
 
         tk.Label(controls, text="Brightness").pack(side=tk.LEFT)
-        self.brightness = tk.Scale(
-            controls, from_=0.3, to=2, resolution=0.1,
+        self.brightness = ttk.Scale(
+            controls, from_=0.3, to=2,
             orient=tk.HORIZONTAL, command=self.on_slider_change, length=200
         )
         self.brightness.set(1.0)
         self.brightness.pack(side=tk.LEFT, padx=10)
 
-        self.slider = tk.Scale(
+        ttk.Label(controls, text="Image").pack(side=tk.LEFT)
+
+        self.slider = ttk.Scale(
             controls, from_=0, to=0,
-            orient=tk.HORIZONTAL, label="Image",
+            orient=tk.HORIZONTAL,
             command=self.change_image, length=200
         )
         self.slider.pack(side=tk.LEFT)
@@ -89,24 +108,24 @@ class ImageToPDFApp:
 
 
         tk.Label(controls, text="Contrast").pack(side=tk.LEFT)
-        self.contrast = tk.Scale(
-            controls, from_=0.5, to=2, resolution=0.1,
+        self.contrast = ttk.Scale(
+            controls, from_=0.5, to=2,
             orient=tk.HORIZONTAL, command=self.on_slider_change, length=150
         )
         self.contrast.set(1.0)
         self.contrast.pack(side=tk.LEFT, padx=5)
 
         tk.Label(controls, text="Saturation").pack(side=tk.LEFT)
-        self.saturation = tk.Scale(
-            controls, from_=0, to=2, resolution=0.1,
+        self.saturation = ttk.Scale(
+            controls, from_=0, to=2,
             orient=tk.HORIZONTAL, command=self.on_slider_change, length=150
         )
         self.saturation.set(1.0)
         self.saturation.pack(side=tk.LEFT, padx=5)
 
         tk.Label(controls, text="Sharpness").pack(side=tk.LEFT)
-        self.sharpness = tk.Scale(
-            controls, from_=0, to=3, resolution=0.1,
+        self.sharpness = ttk.Scale(
+            controls, from_=0, to=3,
             orient=tk.HORIZONTAL, command=self.on_slider_change, length=150
         )
         self.sharpness.set(1.0)
@@ -116,6 +135,12 @@ class ImageToPDFApp:
         for slider in (self.brightness, self.contrast, self.saturation, self.sharpness):
             slider.bind("<ButtonPress-1>", self.on_slider_start)
             slider.bind("<ButtonRelease-1>", self.on_slider_release)
+
+        self.status = ttk.Label(self.root, text="Ready", anchor="w", padding=6)
+        self.status.pack(side=tk.BOTTOM, fill=tk.X)
+
+        for s in (self.brightness, self.contrast, self.saturation, self.sharpness):
+            s.config(state="disabled")
 
     # ----------- Open/Save Project --------------
 
@@ -201,8 +226,9 @@ class ImageToPDFApp:
 
         self.current_index = 0
         self.slider.config(to=len(self.images) - 1)
-        self.load_current()
+        self.slider.set(0)
         self.slider.config(state="normal")
+        self.load_current()
 
     def load_current(self):
         if not self.images:
@@ -215,6 +241,8 @@ class ImageToPDFApp:
         self.original_image = self.current_image.copy()
         self.brightness.set(1.0)
         self.show_image()
+        for s in (self.brightness, self.contrast, self.saturation, self.sharpness):
+            s.config(state="normal")
 
     # ---------------- Display ----------------
     def show_image(self):
@@ -222,6 +250,10 @@ class ImageToPDFApp:
 
         img = self.current_image.copy()
         cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
+
+        if cw < 50 or ch < 50:
+            self.root.update_idletasks()
+            cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
 
         img.thumbnail((cw - 40, ch - 40))
 
@@ -253,17 +285,22 @@ class ImageToPDFApp:
             self.slider.set(self.current_index)
             self.load_current()
 
-    def change_image(self, index):
-        if not self.images:
-            return  # nothing loaded
-
-        index = int(index)
-
-        if index < 0 or index >= len(self.images):
+    def change_image(self, value):
+        if self.slider_updating or not self.images:
             return
+        
+        index = round(float(value))
 
-        self.current_index = index
-        self.load_current()
+        if index == self.current_index:
+            return  # ignore noise
+
+        if 0 <= index < len(self.images):
+            self.current_index = index
+            self.load_current()
+
+        self.slider_updating = True
+        self.slider.set(self.current_index)
+        self.slider_updating = False
 
     def delete_current_image(self):
         if not self.images:
@@ -333,6 +370,8 @@ class ImageToPDFApp:
 
     # ---------------- History ----------------
     def push_history(self):
+        if not self.images:
+            return
         self.history[self.current_index].append(self.current_image.copy())
         self.redo_stack[self.current_index].clear()
 
@@ -492,26 +531,7 @@ class ImageToPDFApp:
 
         self.show_image()
 
-        # ------------------ Lasso Methods ------------------
     
-    def start_lasso(self, e):
-        self.lasso_points = [(e.x, e.y)]
-        self.lasso_active = True
-
-    def draw_lasso(self, e):
-        if not self.lasso_active:
-            return
-        self.lasso_points.append((e.x, e.y))
-        if len(self.lasso_points) > 1:
-            self.canvas.create_line(
-                self.lasso_points[-2][0], self.lasso_points[-2][1],
-                self.lasso_points[-1][0], self.lasso_points[-1][1],
-                fill="red", width=2
-            )
-
-    def end_lasso(self, e):
-        self.lasso_active = False
-
     # ------------------ slider ---------------------
     def on_slider_start(self, event):
         if not self.slider_editing:
@@ -557,6 +577,7 @@ class ImageToPDFApp:
             return
 
         # Show loader
+        self.status.config(text="Generating PDF…")
         self.show_loader("Generating PDF...\nPlease wait")
 
         # Run PDF generation in background
@@ -595,7 +616,8 @@ class ImageToPDFApp:
         # Clear canvas
         self.canvas.delete("all")
 
-        self.slider.config(state="disabled")
+        for s in (self.brightness, self.contrast, self.saturation, self.sharpness):
+            s.config(state="disabled")
 
 # -------------- Loader ----------------
 
@@ -653,6 +675,7 @@ class ImageToPDFApp:
 
     def _on_pdf_success(self):
         self.hide_loader()
+        self.status.config(text="Ready")
         messagebox.showinfo("Success", "PDF created successfully")
         self.reset_app()
 
