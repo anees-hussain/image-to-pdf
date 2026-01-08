@@ -53,6 +53,9 @@ class ImageToPDFApp:
         tk.Button(top, text="Undo", command=self.undo).pack(side=tk.LEFT, padx=4)
         tk.Button(top, text="Redo", command=self.redo).pack(side=tk.LEFT, padx=4)
 
+        tk.Button(top, text="Delete Selected Image", command=self.delete_current_image).pack(side=tk.LEFT, padx=4)
+        tk.Button(top, text="Replace Selected Image", command=self.replace_current_image).pack(side=tk.LEFT, padx=4)
+
         tk.Button(top, text="PDF", command=self.create_pdf).pack(side=tk.LEFT, padx=4)
 
         tk.Button(top, text="◀ Prev", command=self.prev_image).pack(side=tk.LEFT, padx=4)
@@ -261,6 +264,72 @@ class ImageToPDFApp:
 
         self.current_index = index
         self.load_current()
+
+    def delete_current_image(self):
+        if not self.images:
+            return
+
+        confirm = messagebox.askyesno(
+            "Delete Image",
+            "Are you sure you want to delete this image?"
+        )
+        if not confirm:
+            return
+
+        idx = self.current_index
+
+        # Remove image & history
+        del self.images[idx]
+        del self.history[idx]
+        del self.redo_stack[idx]
+
+        if not self.images:
+            # No images left
+            self.reset_app()
+            return
+
+        # Adjust index safely
+        if idx >= len(self.images):
+            idx = len(self.images) - 1
+
+        self.current_index = idx
+        self.slider.config(to=len(self.images) - 1)
+        self.slider.set(self.current_index)
+
+        self.load_current()
+
+    def replace_current_image(self):
+        if not self.images:
+            return
+
+        file = filedialog.askopenfilename(
+            filetypes=[("Images", "*.jpg *.png *.jpeg")]
+        )
+        if not file:
+            return
+
+        try:
+            new_img = Image.open(file).convert("RGB")
+
+            idx = self.current_index
+
+            # Replace image
+            self.images[idx] = new_img
+
+            # Reset history for this image
+            self.history[idx] = [new_img.copy()]
+            self.redo_stack[idx] = []
+
+            self.current_image = new_img
+            self.original_image = new_img.copy()
+
+            self.show_image()
+
+            messagebox.showinfo("Replace Image", "Image replaced successfully")
+
+        except Exception as e:
+            messagebox.showerror("Replace Failed", str(e))
+
 
     # ---------------- History ----------------
     def push_history(self):
